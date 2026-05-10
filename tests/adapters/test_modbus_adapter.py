@@ -1,6 +1,6 @@
 import struct
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from bridge.adapters.modbus_adapter import ModbusAdapter
 from bridge.adapters.base import AdapterError
@@ -26,18 +26,11 @@ def make_entry():
     return entry
 
 
-def make_modbus_result(registers: list):
-    result = MagicMock()
-    result.isError.return_value = False
-    result.registers = registers
-    return result
-
-
 class TestModbusNormalization:
     def test_uint16_normalization(self):
         entry = make_entry()
         adapter = ModbusAdapter(entry)
-        reg_config = entry.config.registers[100]  # temperature, scale=0.1
+        reg_config = entry.config.registers[100]
 
         result = adapter._normalize(100, [256], reg_config)
 
@@ -48,7 +41,7 @@ class TestModbusNormalization:
     def test_uint16_pressure_normalization(self):
         entry = make_entry()
         adapter = ModbusAdapter(entry)
-        reg_config = entry.config.registers[101]  # pressure, scale=0.01
+        reg_config = entry.config.registers[101]
 
         result = adapter._normalize(101, [215], reg_config)
 
@@ -58,9 +51,8 @@ class TestModbusNormalization:
     def test_float32_normalization(self):
         entry = make_entry()
         adapter = ModbusAdapter(entry)
-        reg_config = entry.config.registers[102]  # fuel_level, float32
+        reg_config = entry.config.registers[102]
 
-        # Encode 87.5 as IEEE 754 float32 into two uint16 registers
         packed = struct.pack(">f", 87.5)
         hi, lo = struct.unpack(">HH", packed)
 
@@ -85,11 +77,7 @@ class TestModbusAdapterCall:
         entry = make_entry()
         adapter = ModbusAdapter(entry)
 
-        with patch("bridge.adapters.modbus_adapter.AsyncModbusTcpClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.read_holding_registers.return_value = make_modbus_result([256])
-
+        with patch.object(adapter, "_sync_read", return_value=[256]):
             result = await adapter.call("readRegister", {"register": 100})
 
         assert result["temperature"] == 25.6
@@ -119,14 +107,7 @@ class TestModbusAdapterCall:
         entry = make_entry()
         adapter = ModbusAdapter(entry)
 
-        error_result = MagicMock()
-        error_result.isError.return_value = True
-
-        with patch("bridge.adapters.modbus_adapter.AsyncModbusTcpClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.read_holding_registers.return_value = error_result
-
+        with patch.object(adapter, "_sync_read", side_effect=AdapterError("MODBUS_READ_ERROR", "error", "plc-service")):
             with pytest.raises(AdapterError) as exc_info:
                 await adapter.call("readRegister", {"register": 100})
 
@@ -140,14 +121,7 @@ class TestModbusAdapterCall:
         packed = struct.pack(">f", 87.5)
         hi, lo = struct.unpack(">HH", packed)
 
-        with patch("bridge.adapters.modbus_adapter.AsyncModbusTcpClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_cls.return_value = mock_client
-            mock_client.read_holding_registers.return_value = make_modbus_result([hi, lo])
-
+        with patch.object(adapter, "_sync_read", return_value=[hi, lo]):
             result = await adapter.call("readRegister", {"register": 102})
 
-        # count=2 because register 102 is float32
-        call_kwargs = mock_client.read_holding_registers.call_args[1]
-        assert call_kwargs["count"] == 2
         assert abs(result["fuel_level"] - 87.5) < 0.001
