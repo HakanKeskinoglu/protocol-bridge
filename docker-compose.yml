@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+
+  service_a:
+    build: ./mock_services/service_a
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bridge-net
+
+  service_b:
+    build: ./mock_services/service_b
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bridge-net
+
+  service_c:
+    build: ./mock_services/service_c
+    ports:
+      - "5020:5020"
+    networks:
+      - bridge-net
+
+  bridge:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      service_a:
+        condition: service_healthy
+      service_b:
+        condition: service_healthy
+      service_c:
+        condition: service_started
+    networks:
+      - bridge-net
+
+networks:
+  bridge-net:
+    driver: bridge

@@ -1,0 +1,41 @@
+services:
+  order-service:
+    host: service_a
+    port: 8001
+    protocol: rest
+    timeout: 5.0
+    retry: 3
+
+  erp-service:
+    host: service_b
+    port: 8002
+    protocol: soap
+    timeout: 5.0
+    retry: 3
+
+  plc-service:
+    host: service_c
+    port: 5020
+    protocol: modbus
+    timeout: 3.0
+    retry: 2
+    unit_id: 1
+    registers:
+      100:
+        name: temperature
+        type: uint16
+        scale: 0.1
+        offset: 0
+        unit: celsius
+      101:
+        name: pressure
+        type: uint16
+        scale: 0.01
+        offset: 0
+        unit: bar
+      102:
+        name: fuel_level
+        type: float32
+        scale: 1.0
+        offset: 0
+        unit: liters
