@@ -56,7 +56,7 @@ This project directly implements the five distance types from Bass et al.,
 | **Data Semantic** | Modbus register 100 = raw integer 256; actual meaning = 25.6 °C | `ModbusAdapter` normalizes via `scale`, `offset`, `unit` from config |
 | **Behavioral Semantic** | SOAP requires specific envelope structure; caller should not care | Envelope construction encapsulated inside `SoapAdapter` |
 | **Temporal** | Slow legacy systems, unreliable Modbus links | Per-service `timeout` and `retry` in `services.yaml` |
-| **Resource** | Concurrent requests to limited Modbus devices | Sequential orchestration; each step completes before the next begins |
+| **Resource** | Concurrent requests to limited Modbus devices | Sequential steps within a single request; cross-request per-device serialization is on the Roadmap |
 
 Tactics used: **Encapsulate**, **Use an Intermediary**, **Tailor Interface**,
 **Configure Behavior**, **Orchestrate**, **Restrict Communication Paths**.
@@ -194,13 +194,29 @@ IEEE 754 float — the standard encoding used by most industrial PLCs.
 
 ---
 
-## Future
+## Roadmap
 
-- **Saga / Compensation:** each step declares an optional `compensate` action;
-  on failure the orchestrator calls `compensate` on previously successful steps.
-- **Parallel steps:** `asyncio.gather` for independent steps declared with `parallel: true`.
-- **MQTT adapter:** publish/subscribe integration for IoT sensor streams.
-- **WebSocket stream:** real-time Modbus polling pushed to clients.
+Work that closes real gaps in the current design — ordered by priority.
+
+1. **Per-device `asyncio.Lock`** — serialize access to the same Modbus endpoint across concurrent gateway requests. Makes the Resource-distance claim hold under real load, not only within a single multi-step request.
+2. **Structured logging + correlation ID** — every request carries an ID through registry, orchestrator, and adapters so slow or failed steps are attributable across REST, SOAP, and Modbus hops.
+3. **End-to-end tests against `mock_services/`** — bring the compose stack up and exercise the real orchestrator against the three live protocol endpoints (today’s suite is unit-level with mocked I/O only).
+4. **Write idempotency keys** — ensure retried Modbus/write steps apply at most once; pairs with the existing retry path and strengthens OT-side safety.
+5. **Saga / compensation** — optional `compensate` action per step; on failure the orchestrator reverses previously successful side effects (critical when a mid-flow PLC write has already landed).
+
+---
+
+## Out of Scope
+
+Deliberately not planned. Listed so absences read as choices, not omissions.
+
+| Item | Why not |
+|---|---|
+| **MQTT adapter** | A fourth protocol does not strengthen the adapter pattern; three already prove Open/Closed. Breadth without new architectural claim. |
+| **WebSocket streaming** | Client push is a transport/UX concern, not an integrability-distance problem. Scope creep relative to the gateway’s job. |
+| **Parallel steps** | Conflicts with Resource-distance serialization until (and unless) per-device locking and clear “same device?” rules exist. Sequential orchestration is intentional. |
+| **Message-queue integration** | Async decoupling is a different product shape; this bridge is a synchronous multi-protocol intermediary. |
+| **Multi-tenancy** | Operational isolation model for a SaaS gateway; not required to demonstrate integrability tactics. |
 
 ---
 
